@@ -255,6 +255,51 @@ def overlay_mask_on_image(input_image, text_mask, alpha=0.5):
 
     return overlay
 
+def overlay_boxes_on_image(image, boxes, alpha=0.5):
+    """
+    将预测的框叠加到图像上。
+
+    参数:
+    - image: 输入的原始图像。
+    - boxes: 检测的框，格式为 [num_boxes, 4, 2] 的多边形顶点坐标。
+    - alpha: 透明度，默认为 0.5。
+
+    返回:
+    - image_with_boxes: 绘制了框的图像。
+    """
+    # 确保图像为彩色（避免灰度图的错误绘制）
+    if len(image.shape) == 2 or image.shape[2] == 1:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    # 在图像上绘制框
+    for box in boxes:
+        poly = np.array(box).astype(np.int32).reshape((-1, 1, 2))  # 转换为多边形格式
+        cv2.polylines(image, [poly], isClosed=True, color=(0, 0, 255), thickness=1)
+
+    return image
+
+def overlay_mask_and_boxes(input_image, mask, boxes, alpha=0.5):
+    """
+    将 mask 和预测框叠加到输入图像上。
+
+    参数:
+    - input_image: 原始图像。
+    - mask: 生成的文本区域 mask，值为 0 或 255。
+    - boxes: 检测的框，格式为 [num_boxes, 4, 2] 的多边形顶点坐标。
+    - alpha: 透明度，默认为 0.5。
+
+    返回:
+    - overlay_image: 包含 mask 和框的叠加图像。
+    """
+    # 将 mask 转为彩色并与原图叠加
+    mask_colored = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    overlay_image = cv2.addWeighted(input_image, 1 - alpha, mask_colored, alpha, 0)
+
+    # 在叠加图上绘制框
+    overlay_image_with_boxes = overlay_boxes_on_image(overlay_image, boxes)
+
+    return overlay_image_with_boxes
+
 if __name__ == '__main__':
     # load net
     net = CRAFT()     # initialize
@@ -296,7 +341,7 @@ if __name__ == '__main__':
         image = imgproc.loadImage(image_path)
 
         #bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, refine_net)
-        bboxes, polys, score_text, score_text, target_ratio, img_resized = test_net_v2(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, refine_net)
+        bboxes, polys, ret_score_text, score_text, target_ratio, img_resized = test_net_v2(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, refine_net)
 
         # save score text
         filename, file_ext = os.path.splitext(os.path.basename(image_path))
@@ -305,12 +350,20 @@ if __name__ == '__main__':
         real_mask_file = result_folder + "/" + filename + '_mask.png'
         cv2.imwrite(real_mask_file, real_mask)
 
-        overlay_image = overlay_mask_on_image(image, real_mask, alpha=0.5)
-        overlay_file = result_folder + "/overlay_" + filename + '_mask.jpg'
-        cv2.imwrite(overlay_file, overlay_image)
+        #overlay_image = overlay_mask_on_image(image, real_mask, alpha=0.5)
+        #overlay_file = result_folder + "/overlay_" + filename + '_mask.jpg'
+        #cv2.imwrite(overlay_file, overlay_image)
 
-        mask_file = result_folder + "/res_" + filename + '_mask.jpg'
-        cv2.imwrite(mask_file, score_text)
+        heatmap_overlay_image = overlay_mask_on_image(image, real_mask, alpha=0.5)
+        heatmap_overlay_file = result_folder + "/" + filename + '_mask_overlay.jpg'
+        cv2.imwrite(heatmap_overlay_file, heatmap_overlay_image)
+
+        mask_file = result_folder + "/res_" + filename + '_heatmap.jpg'
+        cv2.imwrite(mask_file, ret_score_text)
+
+        mask_and_box_image = overlay_mask_and_boxes(image, real_mask, polys, alpha=0.5)
+        mask_and_box_image_file = result_folder + "/" + filename + '_mask_and_box_overlay.jpg'
+        cv2.imwrite(mask_and_box_image_file, mask_and_box_image)
 
         file_utils.saveResult(image_path, image[:,:,::-1], polys, dirname=result_folder)
 
